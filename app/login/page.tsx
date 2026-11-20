@@ -7,17 +7,37 @@ import { Logo } from '@/components/logo';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 
+const DEMO = [
+  ['admin@demo.co.id', 'Administrator'],
+  ['direktur@demo.co.id', 'Direktur'],
+  ['pm@demo.co.id', 'Project Manager'],
+  ['site@demo.co.id', 'Site Engineer'],
+  ['estimator@demo.co.id', 'Estimator'],
+  ['procurement@demo.co.id', 'Procurement'],
+  ['finance@demo.co.id', 'Finance & Akuntansi'],
+  ['aset@demo.co.id', 'Asset Manager'],
+];
+
 export default function LoginPage() {
   const { login, user, ready } = useAuth();
   const router = useRouter();
   const [tenant, setTenant] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [cfg, setCfg] = useState<{ tenant: string | null; superapps: boolean } | null>(null);
+  const [cfg, setCfg] = useState<{ tenant: string | null; superapps: boolean; demo?: boolean } | null>(null);
+  const demo = !!cfg?.demo;
 
   useEffect(() => {
-    api<{ tenant: string | null; superapps: boolean }>('/auth/config')
-      .then((c) => setCfg(c))
+    api<{ tenant: string | null; superapps: boolean; demo?: boolean }>('/auth/config')
+      .then((c) => {
+        setCfg(c);
+        if (c.demo) {
+          // SHOW_DEMO=true di backend: isi otomatis akun demo
+          setTenant('demo');
+          setEmail('admin@demo.co.id');
+          setPassword('Password123!');
+        }
+      })
       .catch(() => setCfg({ tenant: null, superapps: false }));
   }, []);
   const [error, setError] = useState('');
@@ -54,9 +74,9 @@ export default function LoginPage() {
           <p className="mt-2 text-sm text-muted">Tender, proyek, pembelian dan keuangan perusahaan Anda dalam satu tempat.</p>
 
           <form onSubmit={submit} className="mt-8 space-y-4">
-            {cfg && !cfg.tenant && (
-              <Field label="Kode perusahaan">
-                <Input value={tenant} onChange={(e) => setTenant(e.target.value)} autoComplete="organization" required />
+            {cfg && (!cfg.tenant || cfg.demo) && (
+              <Field label="Kode perusahaan" hint={cfg.tenant ? `Kosongkan untuk masuk ke ${cfg.tenant}` : undefined}>
+                <Input value={tenant} onChange={(e) => setTenant(e.target.value)} autoComplete="organization" placeholder={cfg.tenant ?? ''} required={!cfg.tenant} />
               </Field>
             )}
             <Field label="Email atau username" hint={cfg?.superapps ? 'Gunakan akun SuperApps Anda' : undefined}>
@@ -70,6 +90,24 @@ export default function LoginPage() {
               Masuk
             </Button>
           </form>
+
+          {demo && (
+            <div className="mt-8 border-t border-line pt-5">
+              <p className="text-[13px] text-muted">Akun demo — pilih peran untuk mencoba hak akses berbeda (perusahaan: demo, password: Password123!)</p>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {DEMO.map(([e, r]) => (
+                  <button
+                    key={e}
+                    type="button"
+                    onClick={() => { setTenant('demo'); setEmail(e); setPassword('Password123!'); }}
+                    className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${email === e ? 'border-ink bg-ink text-white' : 'border-line-strong bg-surface text-ink-2 hover:border-ink'}`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
         </div>
 
@@ -90,9 +128,9 @@ export default function LoginPage() {
           <div className="max-w-md">
             <div className="mb-8 space-y-4">
               {[
-                ['Gedung Kantor 4 Lantai', 60, 64],
-                ['Gudang Logistik Cikarang', 44, 46],
-                ['Perumahan Griya Asri', 8, 10],
+                ['Proyek gedung', 60, 64],
+                ['Proyek gudang', 44, 46],
+                ['Proyek perumahan', 8, 10],
               ].map(([n, a, p]) => (
                 <div key={n as string}>
                   <div className="mb-1.5 flex justify-between text-sm">
