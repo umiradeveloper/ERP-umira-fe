@@ -244,10 +244,11 @@ function DecisionModal({ open, onClose, id, onDone }: { open: boolean; onClose: 
       const body: any = { ...f };
       Object.keys(body).forEach((k) => body[k] === '' && delete body[k]);
       if (f.decision !== 'WON') { delete body.startDate; delete body.endDate; delete body.managerName; }
-      await api(`/tenders/${id}/decision`, { body });
-      toast.success(f.decision === 'WON' ? 'Selamat! Proyek & budget baseline sudah dibuat' : 'Hasil tender dicatat');
+      const res = await api<{ projectId?: string }>(`/tenders/${id}/decision`, { body });
+      toast.success(f.decision === 'WON' ? 'Selamat! Proyek & RAB sudah dibuat. Lanjutkan menyusun RAP.' : 'Hasil tender dicatat');
       onClose();
-      onDone();
+      if (f.decision === 'WON' && res?.projectId) window.location.href = `/projects/${res.projectId}?tab=rap`;
+      else onDone();
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -266,7 +267,7 @@ function DecisionModal({ open, onClose, id, onDone }: { open: boolean; onClose: 
         {f.decision === 'WON' && (
           <>
             <p className="rounded-lg bg-signal-soft px-3 py-2.5 text-sm text-signal-ink">
-              BQ akan disalin menjadi BQ kontrak (harga jual) dan budget baseline (harga biaya). Data tender tidak diubah.
+              BQ disalin menjadi RAB proyek (harga jual). Setelah itu RAP disusun di proyek dengan RAB sebagai acuan — draf awalnya diisi dari estimasi biaya tender. Data tender tidak diubah.
             </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Mulai"><Input type="date" value={f.startDate} onChange={(e) => setF({ ...f, startDate: e.target.value })} /></Field>

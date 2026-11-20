@@ -11,7 +11,8 @@ import { VariationOrders } from '@/components/variation-orders';
 import { BkPu, Efisiensi, Penetapan } from '@/components/bkpu';
 import { ProjectPhoto, ProjectPhotoEditor } from '@/components/project-photo';
 import { ProjectSwitcher } from '@/components/project-switcher';
-import { Pencil } from 'lucide-react';
+import { RapEditor } from '@/components/rap-editor';
+import { Lock } from 'lucide-react';
 import { api, can, useApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { CATEGORY_LABEL, date, num, pct, rupiah, rupiahShort, today, toNum } from '@/lib/format';
@@ -23,15 +24,18 @@ const NEXT_STATUS: Record<string, [string, string][]> = {
   COMPLETION: [['CLOSED', 'Tutup proyek']],
 };
 
-type Tab = 'overview' | 'cost' | 'bq' | 'vo' | 'progress' | 'procurement' | 'billing' | 'docs';
+type Tab = 'overview' | 'cost' | 'bq' | 'rap' | 'vo' | 'progress' | 'procurement' | 'billing' | 'docs';
 
 export default function ProjectDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { user } = useAuth();
   const { data: p, error, loading, reload } = useApi<any>(`/projects/${id}`);
   const [tab, setTab] = useState<Tab>('overview');
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('tab') as Tab | null;
+    if (q && ['overview', 'cost', 'bq', 'rap', 'vo', 'progress', 'procurement', 'billing', 'docs'].includes(q)) setTab(q);
+  }, []);
   const [busy, setBusy] = useState('');
-  const [editBkpu, setEditBkpu] = useState(false);
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get('tab') as Tab | null;
     if (t) setTab(t);
@@ -80,49 +84,51 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
       </div>
 
       <section className="mb-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-5 [&>*]:bg-surface [&>*]:px-5 [&>*]:py-4">
-        <Stat label="Nilai kontrak" value={rupiahShort(p.contractValue)} />
+        <Stat label="Nilai kontrak (RAB)" value={rupiahShort(p.contractValue)} />
         <div>
           <div className="text-[13px] text-muted">Progres fisik</div>
           <div className="num mt-1 text-[22px] font-semibold tracking-[-0.02em]">{pct(p.progressPct, 0)}</div>
           <PlanBar actual={p.progressPct} planned={p.plannedPct} className="mt-2" />
         </div>
-        <Stat label="Budget biaya" value={rupiahShort(t.budget)} sub={`Terpakai ${pct(t.usedPct, 0)}`} tone={t.alert === 'OVER' ? 'bad' : undefined} />
+        <Stat label="Budget Pelaksanaan (RAP)" value={rupiahShort(t.budget)} sub={`Terpakai ${pct(t.usedPct, 0)}`} tone={t.alert === 'OVER' ? 'bad' : undefined} />
         <Stat label="Sudah ditagih" value={rupiahShort(p.finance.billedGross)} sub={`Diterima ${rupiahShort(p.finance.received)}`} />
         <Stat label="Forecast margin" value={p.finance.forecastMargin === null ? '—' : rupiahShort(p.finance.forecastMargin)} tone={toNum(p.finance.forecastMargin) < 0 ? 'bad' : undefined} />
       </section>
 
-      <section className="mb-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-4 [&>*]:bg-surface [&>*]:px-5 [&>*]:py-4">
+      <section className="mb-6 grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-3 [&>*]:bg-surface [&>*]:px-5 [&>*]:py-4">
         <div>
-          <div className="flex items-center justify-between gap-2 text-[13px] text-muted">
-            BK/PU penetapan
-            {write && <button type="button" title="Ubah BK/PU penetapan" onClick={() => setEditBkpu(true)} className="rounded p-1 text-muted hover:bg-hover hover:text-ink"><Pencil className="size-3.5" /></button>}
-          </div>
+          <div className="flex items-center gap-1.5 text-[13px] text-muted">BK/PU penetapan <Lock className="size-3 text-faint" aria-label="Otomatis" /></div>
           <div className="mt-1 text-[20px] tracking-[-0.02em]"><Penetapan value={p.bkpuPenetapanPct} /></div>
-          <div className="mt-0.5 text-xs text-muted">Ditetapkan manajemen</div>
-        </div>
-        <div>
-          <div className="text-[13px] text-muted">BK/PU awal</div>
-          <div className="mt-1 text-[20px] tracking-[-0.02em]"><BkPu pct={p.bkpuAwalPct} bk={p.bkAwal} pu={p.puAwal} empty="Belum ada RAP" align="left" /></div>
+          <div className="mt-0.5 text-xs text-muted">
+            {p.rap?.approvedAt ? `BK/PU awal, dari RAP ditetapkan ${date(p.rap.approvedAt)}` : 'Terisi otomatis saat RAP ditetapkan'}
+          </div>
         </div>
         <div>
           <div className="text-[13px] text-muted">BK/PU saat ini</div>
-          <div className="mt-1 text-[20px] tracking-[-0.02em]"><BkPu pct={p.bkpuSaatIniPct} bk={p.bkSaatIni} pu={p.puSaatIni} base={p.bkpuAwalPct} empty="Belum ada progres" align="left" /></div>
+          <div className="mt-1 text-[20px] tracking-[-0.02em]"><BkPu pct={p.bkpuSaatIniPct} bk={p.bkSaatIni} pu={p.puSaatIni} base={p.bkpuPenetapanPct ?? p.bkpuAwalPct} empty="Belum ada progres" align="left" /></div>
         </div>
         <div>
           <div className="text-[13px] text-muted">Efisiensi</div>
           <div className="mt-1 text-[20px] tracking-[-0.02em]"><Efisiensi value={p.efisiensiPct} /></div>
-          <div className="mt-0.5 text-xs text-muted">BK/PU awal − BK/PU saat ini</div>
+          <div className="mt-0.5 text-xs text-muted">BK/PU penetapan − BK/PU saat ini</div>
         </div>
       </section>
-      <BkpuModal open={editBkpu} onClose={() => setEditBkpu(false)} id={id} value={p.bkpuPenetapanPct} onDone={reload} />
+
+      {p.rap && !p.rap.approvedAt && tab !== 'rap' && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-signal/30 bg-signal-soft px-4 py-3 text-sm text-signal-ink">
+          <span>RAP proyek ini belum ditetapkan{p.rap.items ? ' (masih draf)' : ''}. Susun RAP dengan RAB sebagai acuan, lalu tetapkan sebagai budget pelaksanaan.</span>
+          <Button size="sm" variant="secondary" onClick={() => setTab('rap')}>Buka RAP</Button>
+        </div>
+      )}
 
       <Tabs<Tab>
         value={tab}
         onChange={setTab}
         items={[
           { value: 'overview', label: 'Ringkasan' },
+          { value: 'bq', label: 'RAB' },
+          { value: 'rap', label: 'RAP' },
           { value: 'cost', label: 'Budget & biaya' },
-          { value: 'bq', label: 'Bill of Quantity' },
           { value: 'vo', label: 'Variation order' },
           { value: 'progress', label: 'Progres & laporan harian' },
           { value: 'procurement', label: 'Pengadaan' },
@@ -134,6 +140,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
       {tab === 'overview' && <Overview p={p} />}
       {tab === 'cost' && <CostTab p={p} />}
       {tab === 'bq' && <BqTab id={id} />}
+      {tab === 'rap' && <RapEditor projectId={id} canEdit={write} onSaved={reload} />}
       {tab === 'progress' && <ProgressTab p={p} write={write} reload={reload} />}
       {tab === 'procurement' && <ProcTab id={id} />}
       {tab === 'billing' && <BillingTab p={p} />}
@@ -141,35 +148,6 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
       {tab === 'docs' && <Attachments entityType="Project" entityId={id} title="Dokumen proyek (kontrak, gambar, RFI, foto)" canUpload={write} />}
       </div>
     </div>
-  );
-}
-
-function BkpuModal({ open, onClose, id, value, onDone }: { open: boolean; onClose: () => void; id: string; value: any; onDone: () => void }) {
-  const [v, setV] = useState('');
-  const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    if (open) setV(value === null || value === undefined ? '' : String(Number(value)));
-  }, [open, value]);
-  async function save() {
-    setSaving(true);
-    try {
-      await api(`/projects/${id}`, { method: 'PATCH', body: { bkpuPenetapanPct: v.trim() } });
-      toast.success('BK/PU penetapan disimpan');
-      onDone();
-      onClose();
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <Modal open={open} onClose={onClose} title="BK/PU penetapan"
-      footer={<><Button variant="secondary" onClick={onClose}>Batal</Button><Button onClick={save} loading={saving}>Simpan</Button></>}>
-      <Field label="BK/PU penetapan (%)" hint="Rasio biaya konstruksi ÷ pendapatan usaha yang ditetapkan manajemen. Kosongkan untuk menghapus.">
-        <Input type="number" step="0.01" min={0} max={999} value={v} onChange={(e) => setV(e.target.value)} autoFocus />
-      </Field>
-    </Modal>
   );
 }
 
@@ -299,18 +277,18 @@ function CostTab({ p }: { p: any }) {
 function BqTab({ id }: { id: string }) {
   const { data, loading } = useApi<any[]>(`/projects/${id}/bq/items`);
   if (loading) return <Loading />;
-  if (!data?.length) return <Panel><Empty title="BQ kosong">Proyek manual belum memiliki BQ. BQ otomatis tersalin dari tender yang menang.</Empty></Panel>;
+  if (!data?.length) return <Panel><Empty title="RAB kosong">Proyek manual belum memiliki RAB. RAB otomatis tersalin dari tender yang menang.</Empty></Panel>;
   const sections = [...new Set(data.map((i) => i.section))];
   const total = data.reduce((a, i) => a + toNum(i.amount), 0);
   return (
-    <Panel title="Bill of Quantity kontrak" subtitle="Snapshot harga jual dari tender — tidak berubah oleh revisi tender" bodyClass="p-0" actions={<ExportButton size="sm" path={`/exports/bq.xlsx?projectId=${id}`} />}>
+    <Panel title="RAB — Rencana Anggaran Biaya (nilai kontrak)" subtitle="Harga jual dari tender yang menang. Menjadi acuan penyusunan RAP." bodyClass="p-0" actions={<ExportButton size="sm" path={`/exports/bq.xlsx?projectId=${id}`} />}>
       <Table>
         <thead><tr><Th>Kode</Th><Th>Uraian</Th><Th right>Volume</Th><Th>Sat.</Th><Th right>Harga satuan</Th><Th right>Jumlah</Th></tr></thead>
         <tbody>
           {sections.map((s) => (
             <SectionRows key={s} title={s} items={data.filter((i) => i.section === s)} />
           ))}
-          <tr className="bg-hover font-semibold"><Td colSpan={5}>Total nilai BQ</Td><Td right>{rupiah(total)}</Td></tr>
+          <tr className="bg-hover font-semibold"><Td colSpan={5}>Total RAB</Td><Td right>{rupiah(total)}</Td></tr>
         </tbody>
       </Table>
     </Panel>
