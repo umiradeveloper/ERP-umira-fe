@@ -21,13 +21,16 @@ export default function TenderDetail({ params }: { params: Promise<{ id: string 
   const [rows, setRows] = useState<Row[]>([]);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState('');
-  const [markup, setMarkup] = useState({ overheadPct: '', contingencyPct: '', profitPct: '', taxPct: '' });
+  const [markup, setMarkup] = useState({ overheadPct: '', overheadAmount: '', contingencyPct: '', profitPct: '', taxPct: '' });
   const [decision, setDecision] = useState(false);
 
   useEffect(() => {
     if (!t) return;
     setRows(t.items.map((i: any) => ({ section: i.section, code: i.code, description: i.description, unit: i.unit ?? '', category: i.category, costCode: i.costCode ?? '', quantity: String(toNum(i.quantity)), unitCost: String(toNum(i.unitCost)) })));
-    setMarkup({ overheadPct: String(toNum(t.overheadPct)), contingencyPct: String(toNum(t.contingencyPct)), profitPct: String(toNum(t.profitPct)), taxPct: String(toNum(t.taxPct)) });
+    // Overhead diinput sebagai nominal; tender lama (persentase) dikonversi ke nominal dari biaya langsung
+    const direct0 = t.items.reduce((a: number, i: any) => a + toNum(i.amount), 0);
+    const ohAmount = t.overheadAmount !== null && t.overheadAmount !== undefined ? toNum(t.overheadAmount) : Math.round(direct0 * toNum(t.overheadPct)) / 100;
+    setMarkup({ overheadPct: String(toNum(t.overheadPct)), overheadAmount: String(ohAmount), contingencyPct: String(toNum(t.contingencyPct)), profitPct: String(toNum(t.profitPct)), taxPct: String(toNum(t.taxPct)) });
     setDirty(false);
   }, [t]);
 
@@ -36,12 +39,13 @@ export default function TenderDetail({ params }: { params: Promise<{ id: string 
     const direct = rows.reduce((a, r) => a + Math.round(toNum(r.quantity) * toNum(r.unitCost) * 100) / 100, 0);
     const byCat: Record<string, number> = {};
     rows.forEach((r) => (byCat[r.category] = (byCat[r.category] ?? 0) + Math.round(toNum(r.quantity) * toNum(r.unitCost) * 100) / 100));
-    const oh = (direct * toNum(markup.overheadPct)) / 100;
+    const oh = Math.round(toNum(markup.overheadAmount) * 100) / 100;
+    const ohPct = direct > 0 ? (oh / direct) * 100 : 0;
     const cont = (direct * toNum(markup.contingencyPct)) / 100;
     const profit = ((direct + oh + cont) * toNum(markup.profitPct)) / 100;
     const sub = direct + oh + cont + profit;
     const tax = (sub * toNum(markup.taxPct)) / 100;
-    return { direct, byCat, oh, cont, profit, sub, tax, total: sub + tax };
+    return { direct, byCat, oh, ohPct, cont, profit, sub, tax, total: sub + tax };
   }, [rows, markup]);
 
   if (loading && !t) return <Loading />;
@@ -73,7 +77,8 @@ export default function TenderDetail({ params }: { params: Promise<{ id: string 
   }
   const save = () =>
     run('save', async () => {
-      await api(`/tenders/${id}`, { method: 'PATCH', body: { title: t.title, customerId: t.customerId ?? undefined, location: t.location ?? undefined, ...markup } });
+      const { overheadPct: _oh, ...rest } = markup;
+      await api(`/tenders/${id}`, { method: 'PATCH', body: { title: t.title, customerId: t.customerId ?? undefined, location: t.location ?? undefined, ...rest, overheadAmount: String(toNum(markup.overheadAmount)), overheadPct: calc.ohPct.toFixed(4) } });
       const res = await api(`/tenders/${id}/items`, { method: 'PUT', body: { items: rows.filter((r) => r.description).map((r) => ({ ...r, costCode: r.costCode || undefined, unit: r.unit || undefined })) } });
       setData(res);
     }, 'BQ & estimasi tersimpan');
@@ -101,7 +106,7 @@ export default function TenderDetail({ params }: { params: Promise<{ id: string 
         }
       />
 
-      <div className="grid gap-6 2xl:grid-cols-[1fr_340px]">
+      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_340px]">
         <Panel title="Bill of Quantity" subtitle={editable ? 'Isi volume dan harga satuan biaya (AHSP). Harga jual dihitung dari markup.' : 'BQ terkunci setelah penawaran diajukan'} bodyClass="p-0"
           actions={editable && (
             <div className="flex flex-wrap gap-2">
@@ -176,7 +181,20 @@ export default function TenderDetail({ params }: { params: Promise<{ id: string 
                 <div key={k} className="flex justify-between text-muted"><dt>{CATEGORY_LABEL[k]}</dt><dd className="num">{rupiah(v)}</dd></div>
               ))}
               <div className="flex justify-between border-t border-line pt-2.5 font-medium"><dt>Biaya langsung</dt><dd className="num">{rupiah(calc.direct)}</dd></div>
-              <MarkupRow label="Overhead" k="overheadPct" v={calc.oh} markup={markup} setMarkup={(m) => { setMarkup(m); setDirty(true); }} editable={editable} />
+              <div className="text-muted">
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="flex items-center gap-2">Overhead <span className="num text-xs">({pct(calc.ohPct, 2)})</span></dt>
+                  <dd className="num">{rupiah(calc.oh)}</dd>
+                </div>
+                {editable && (
+                  <label className="mt-1.5 flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-surface px-2 text-xs focus-within:border-ink">
+                    <span>Rp</span>
+                    <input type="number" min={0} step="0.01" value={markup.overheadAmount}
+                      onChange={(e) => { setMarkup({ ...markup, overheadAmount: e.target.value }); setDirty(true); }}
+                      className="num w-full bg-transparent text-right text-ink outline-none" aria-label="Overhead (Rp)" placeholder="Nominal overhead" />
+                  </label>
+                )}
+              </div>
               <MarkupRow label="Contingency" k="contingencyPct" v={calc.cont} markup={markup} setMarkup={(m) => { setMarkup(m); setDirty(true); }} editable={editable} />
               <MarkupRow label="Profit" k="profitPct" v={calc.profit} markup={markup} setMarkup={(m) => { setMarkup(m); setDirty(true); }} editable={editable} />
               <div className="flex justify-between border-t border-line pt-2.5 font-medium"><dt>Harga penawaran</dt><dd className="num">{rupiah(calc.sub)}</dd></div>
