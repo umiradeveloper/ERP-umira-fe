@@ -9,7 +9,7 @@ import { Attachments } from '@/components/attachments';
 import { ExportButton } from '@/components/export-button';
 import { VariationOrders } from '@/components/variation-orders';
 import { BkPu, Efisiensi, Penetapan } from '@/components/bkpu';
-import { ProjectPhotoEditor } from '@/components/project-photo';
+import { ProjectPhoto, ProjectPhotoEditor } from '@/components/project-photo';
 import { ProjectSwitcher } from '@/components/project-switcher';
 import { Pencil } from 'lucide-react';
 import { api, can, useApi } from '@/lib/api';
@@ -59,10 +59,10 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
 
   return (
     <div className="animate-rise flex gap-6">
-      <ProjectSwitcher activeId={id} />
+      <ProjectSwitcher key={p.coverFileId ?? "none"} activeId={id} />
       <div className="min-w-0 flex-1">
       <div className="flex items-start gap-4">
-        <ProjectPhotoEditor projectId={id} fileId={p.coverFileId} canEdit={write} onChanged={reload} className="mt-7 size-[72px]" />
+        <ProjectPhotoEditor projectId={id} fileId={p.coverFileId} title={p.coverTitle} canEdit={write} onChanged={reload} className="mt-7 size-[72px]" />
         <div className="min-w-0 flex-1">
       <PageHeader
         back={{ href: '/projects', label: 'Proyek' }}
@@ -177,6 +177,17 @@ function Overview({ p }: { p: any }) {
   const chart = p.progress.map((e: any) => ({ d: date(e.reportDate), plan: toNum(e.plannedPct), actual: toNum(e.actualPct) }));
   return (
     <div className="grid gap-6 xl:grid-cols-[1fr_1.3fr]">
+      {p.coverFileId && (
+        <Panel className="xl:col-span-2" bodyClass="p-0">
+          <figure>
+            <ProjectPhoto fileId={p.coverFileId} alt={p.coverTitle ?? p.name} className="h-72 w-full rounded-none rounded-t-xl ring-0" />
+            <figcaption className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
+              <span className="font-medium">{p.coverTitle || 'Foto proyek'}</span>
+              <span className="text-xs text-muted">Klik foto di sebelah nama proyek untuk mengganti foto atau judul</span>
+            </figcaption>
+          </figure>
+        </Panel>
+      )}
       <Panel title="Data kontrak">
         <KV
           items={[
