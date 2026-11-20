@@ -2,6 +2,7 @@
 
 import { bulkCreate, clean, ExcelImport } from '@/components/excel-import';
 import { Plus, RefreshCw } from 'lucide-react';
+import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Badge, Button, Field, Input, Loading, Modal, PageHeader, Panel, Table, Td, Th, Tr } from '@/components/ui';
@@ -33,7 +34,7 @@ export default function UsersPage() {
 
   return (
     <div className="animate-rise">
-      <PageHeader title="User & role" description="Akses berbasis role, deny-by-default. Menonaktifkan user langsung mencabut sesinya."
+      <PageHeader title="User" description="Akses berbasis role, deny-by-default. Menonaktifkan user langsung mencabut sesinya."
         actions={w && (
           <>
             {sa?.enabled && <Button variant="secondary" icon={<RefreshCw className="size-4" />} loading={syncing} onClick={syncSa}>Sinkron user SuperApps</Button>}
@@ -74,7 +75,7 @@ export default function UsersPage() {
         <div className="mb-4 rounded-lg border border-line bg-surface px-4 py-3 text-sm">
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
             <span className="font-medium">Akun dari SuperApps <span className="num text-ink-2">({sa.host})</span></span>
-            <span className="text-muted">User login dengan email/username & password SuperApps. Role mengikuti pemetaan role SuperApps → ERP.</span>
+            <span className="text-muted">User login dengan email/username & password SuperApps. Role mengikuti pemetaan role SuperApps → ERP (Role & menu → Pemetaan role SuperApps).</span>
           </div>
           {sa.lastSync && (
             <div className="mt-1.5 text-xs text-muted">
@@ -102,15 +103,15 @@ export default function UsersPage() {
             </Table>
           )}
         </Panel>
-        <Panel title="Role & hak akses" bodyClass="p-0">
+        <Panel title="Role" bodyClass="p-0" actions={<Link href="/admin/roles" className="text-[13px] font-medium text-ink-2 hover:underline">Atur role & menu</Link>}>
           <ul className="divide-y divide-line">
             {roles?.map((r) => (
-              <li key={r.id} className="px-5 py-3">
-                <div className="text-sm font-medium">{r.name}</div>
-                <div className="text-xs text-muted">{r.description}</div>
-                <div className="mt-1.5 flex flex-wrap gap-1">
-                  {(r.permissions as string[]).map((p) => <span key={p} className="rounded bg-canvas px-1.5 py-0.5 text-[11px] text-ink-2">{p === '*' ? 'semua akses' : p}</span>)}
+              <li key={r.id} className="flex items-center gap-3 px-5 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">{r.name}</div>
+                  {r.description && <div className="truncate text-xs text-muted">{r.description}</div>}
                 </div>
+                <span className="num text-xs text-muted">{r.users} user</span>
               </li>
             ))}
           </ul>
@@ -158,7 +159,7 @@ function UserModal({ row, roles, onClose, onDone }: { row: any; roles: any[]; on
       )}
       {external && (
         <p className="mb-4 rounded-lg bg-signal-soft px-3 py-2.5 text-sm text-signal-ink">
-          Akun ini dari SuperApps{row.title ? ` (role: ${row.title})` : ''}. Password dan role dikelola di SuperApps; di ERP hanya bisa diaktifkan/nonaktifkan.
+          Akun ini dari SuperApps{row.title ? ` (role: ${row.title})` : ''}. Password dikelola di SuperApps dan role ERP-nya mengikuti pemetaan di Role & menu → Pemetaan role SuperApps. Di sini hanya bisa diaktifkan/nonaktifkan.
         </p>
       )}
       <div className="text-[13px] font-medium text-ink-2">Role</div>

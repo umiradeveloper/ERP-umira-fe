@@ -3,67 +3,13 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
-import {
-  BarChart3, BookOpen, Building2, CheckSquare, ClipboardList, FileSignature, FileText, HardHat,
-  LayoutDashboard, LogOut, Menu, Receipt, Scale, Warehouse, ScrollText, Settings2, ShoppingCart, Truck, Users, Wallet, X,
-} from 'lucide-react';
+import { LogOut, Lock, Menu, X } from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { NotificationBell } from '@/components/notification-bell';
 import { cn, Loading } from '@/components/ui';
-import { api, can } from '@/lib/api';
+import { api } from '@/lib/api';
+import { canSeeMenu, menuForPath, NAV } from '@/lib/menu';
 import { useAuth } from '@/lib/auth';
-
-type NavItem = { href: string; label: string; icon: any; perm?: string; badge?: 'approvals' };
-const NAV: { group: string; items: NavItem[] }[] = [
-  {
-    group: '',
-    items: [
-      { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { href: '/approvals', label: 'Approval saya', icon: CheckSquare, badge: 'approvals' },
-    ],
-  },
-  {
-    group: 'Komersial & proyek',
-    items: [
-      { href: '/tenders', label: 'Tender & BQ', icon: FileSignature, perm: 'tender:read' },
-      { href: '/projects', label: 'Proyek', icon: HardHat, perm: 'project:read' },
-      { href: '/cost', label: 'Cost control', icon: BarChart3, perm: 'cost:read' },
-    ],
-  },
-  {
-    group: 'Pengadaan',
-    items: [
-      { href: '/procurement/pr', label: 'Purchase request', icon: ClipboardList, perm: 'procurement:read' },
-      { href: '/procurement/rfq', label: 'RFQ & penawaran', icon: Scale, perm: 'procurement:read' },
-      { href: '/procurement/po', label: 'Purchase order', icon: ShoppingCart, perm: 'procurement:read' },
-    ],
-  },
-  {
-    group: 'Keuangan',
-    items: [
-      { href: '/finance/invoices', label: 'Penagihan & piutang', icon: Receipt, perm: 'finance:read' },
-      { href: '/finance/ap', label: 'Hutang supplier', icon: Wallet, perm: 'finance:read' },
-      { href: '/accounting/journals', label: 'Jurnal', icon: BookOpen, perm: 'accounting:read' },
-      { href: '/accounting/reports', label: 'Laporan keuangan', icon: FileText, perm: 'accounting:read' },
-    ],
-  },
-  {
-    group: 'Aset & gudang',
-    items: [
-      { href: '/assets', label: 'Aset & alat', icon: Truck, perm: 'asset:read' },
-      { href: '/inventory', label: 'Gudang & stok', icon: Warehouse, perm: 'warehouse:read' },
-    ],
-  },
-  {
-    group: 'Pengaturan',
-    items: [
-      { href: '/master', label: 'Customer & supplier', icon: Building2, perm: 'master:read' },
-      { href: '/admin/users', label: 'User & role', icon: Users, perm: 'admin:read' },
-      { href: '/admin/workflows', label: 'Alur approval', icon: Settings2, perm: 'admin:read' },
-      { href: '/admin/audit', label: 'Audit log', icon: ScrollText, perm: 'audit:read' },
-    ],
-  },
-];
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { user, ready, logout } = useAuth();
@@ -87,6 +33,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   if (!ready || !user) return <Loading label="Memeriksa sesi…" />;
 
+  const current = menuForPath(path);
+  const blocked = current && !canSeeMenu(user, current);
   const initials = user.name.split(' ').map((s) => s[0]).slice(0, 2).join('');
 
   const sidebar = (
@@ -101,7 +49,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </div>
       <nav className="flex-1 space-y-4 overflow-y-auto px-3 pb-6" aria-label="Navigasi utama">
         {NAV.map((g) => {
-          const items = g.items.filter((i) => !i.perm || can(user, i.perm));
+          const items = g.items.filter((i) => canSeeMenu(user, i));
           if (!items.length) return null;
           return (
             <div key={g.group || 'main'}>
@@ -186,7 +134,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-8 sm:py-8">{children}</main>
+      <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-8 sm:py-8">
+        {blocked ? (
+          <div className="mx-auto mt-16 max-w-md rounded-xl border border-line bg-surface px-6 py-10 text-center">
+            <Lock className="mx-auto size-6 text-muted" />
+            <h1 className="mt-3 text-lg font-semibold">Menu {current!.label} tidak tersedia</h1>
+            <p className="mt-1 text-sm text-muted">Role Anda tidak memiliki akses ke menu ini. Hubungi administrator bila Anda membutuhkannya.</p>
+            <Link href="/dashboard" className="mt-5 inline-flex h-9 items-center rounded-lg bg-ink px-4 text-sm font-medium text-white">Ke dashboard</Link>
+          </div>
+        ) : children}
+      </main>
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { BkPu, Efisiensi, Penetapan } from '@/components/bkpu';
 import { ProjectPhoto, ProjectPhotoEditor } from '@/components/project-photo';
 import { ProjectSwitcher } from '@/components/project-switcher';
 import { RapEditor } from '@/components/rap-editor';
+import { DeleteProject } from '@/components/delete-project';
 import { Lock } from 'lucide-react';
 import { api, can, useApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -76,9 +77,14 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
             {p.code} <Badge status={p.status} /> <span>{p.ownerName ?? 'Tanpa owner'}</span>
           </span>
         }
-        actions={write && NEXT_STATUS[p.status]?.map(([s, l], i) => (
-          <Button key={s} variant={i === 0 ? 'primary' : 'secondary'} loading={busy === s} onClick={() => setStatus(s)}>{l}</Button>
-        ))}
+        actions={
+          <>
+            {write && NEXT_STATUS[p.status]?.map(([s, l], i) => (
+              <Button key={s} variant={i === 0 ? 'primary' : 'secondary'} loading={busy === s} onClick={() => setStatus(s)}>{l}</Button>
+            ))}
+            {can(user, 'admin:write') && <DeleteProject projectId={id} status={p.status} onCancelled={reload} />}
+          </>
+        }
       />
         </div>
       </div>

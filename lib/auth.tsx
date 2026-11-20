@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { api, session, type Session, type SessionUser } from './api';
+import { api, refreshSession, session, type Session, type SessionUser } from './api';
 
 interface AuthCtx {
   user: SessionUser | null;
@@ -21,9 +21,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setReady(true);
     window.addEventListener('erp-session', sync);
     window.addEventListener('storage', sync);
+    // Hak akses & menu bisa diubah admin kapan saja → ambil ulang sesi saat aplikasi dibuka/kembali difokuskan
+    let last = 0;
+    const fresh = () => {
+      if (!session.get() || Date.now() - last < 60_000) return;
+      last = Date.now();
+      refreshSession().catch(() => {});
+    };
+    fresh();
+    window.addEventListener('focus', fresh);
     return () => {
       window.removeEventListener('erp-session', sync);
       window.removeEventListener('storage', sync);
+      window.removeEventListener('focus', fresh);
     };
   }, []);
 

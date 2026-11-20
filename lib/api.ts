@@ -12,6 +12,8 @@ export interface SessionUser {
   title?: string | null;
   roles: string[];
   perms: string[];
+  /** Menu yang boleh tampil; null = semua menu sesuai hak akses */
+  menus?: string[] | null;
   tenant: { id: string; name: string; slug: string };
 }
 export interface Session {
@@ -47,6 +49,11 @@ export const session = {
 };
 
 let refreshing: Promise<boolean> | null = null;
+
+/** Ambil ulang sesi (hak akses & menu terbaru dari role) tanpa login ulang */
+export function refreshSession() {
+  return refresh();
+}
 
 async function refresh(): Promise<boolean> {
   const s = session.get();
