@@ -8,6 +8,10 @@ import { Badge, Button, BudgetBar, Empty, ErrorBox, Field, Input, KV, Loading, M
 import { Attachments } from '@/components/attachments';
 import { ExportButton } from '@/components/export-button';
 import { VariationOrders } from '@/components/variation-orders';
+import { BkPu, Efisiensi, Penetapan } from '@/components/bkpu';
+import { ProjectPhotoEditor } from '@/components/project-photo';
+import { ProjectSwitcher } from '@/components/project-switcher';
+import { Pencil } from 'lucide-react';
 import { api, can, useApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { CATEGORY_LABEL, date, num, pct, rupiah, rupiahShort, today, toNum } from '@/lib/format';
@@ -27,6 +31,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
   const { data: p, error, loading, reload } = useApi<any>(`/projects/${id}`);
   const [tab, setTab] = useState<Tab>('overview');
   const [busy, setBusy] = useState('');
+  const [editBkpu, setEditBkpu] = useState(false);
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get('tab') as Tab | null;
     if (t) setTab(t);
@@ -53,7 +58,12 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
   const t = p.cost.total;
 
   return (
-    <div className="animate-rise">
+    <div className="animate-rise flex gap-6">
+      <ProjectSwitcher activeId={id} />
+      <div className="min-w-0 flex-1">
+      <div className="flex items-start gap-4">
+        <ProjectPhotoEditor projectId={id} fileId={p.coverFileId} canEdit={write} onChanged={reload} className="mt-7 size-[72px]" />
+        <div className="min-w-0 flex-1">
       <PageHeader
         back={{ href: '/projects', label: 'Proyek' }}
         title={p.name}
@@ -66,6 +76,8 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
           <Button key={s} variant={i === 0 ? 'primary' : 'secondary'} loading={busy === s} onClick={() => setStatus(s)}>{l}</Button>
         ))}
       />
+        </div>
+      </div>
 
       <section className="mb-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-5 [&>*]:bg-surface [&>*]:px-5 [&>*]:py-4">
         <Stat label="Nilai kontrak" value={rupiahShort(p.contractValue)} />
@@ -78,6 +90,31 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
         <Stat label="Sudah ditagih" value={rupiahShort(p.finance.billedGross)} sub={`Diterima ${rupiahShort(p.finance.received)}`} />
         <Stat label="Forecast margin" value={p.finance.forecastMargin === null ? '—' : rupiahShort(p.finance.forecastMargin)} tone={toNum(p.finance.forecastMargin) < 0 ? 'bad' : undefined} />
       </section>
+
+      <section className="mb-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-4 [&>*]:bg-surface [&>*]:px-5 [&>*]:py-4">
+        <div>
+          <div className="flex items-center justify-between gap-2 text-[13px] text-muted">
+            BK/PU penetapan
+            {write && <button type="button" title="Ubah BK/PU penetapan" onClick={() => setEditBkpu(true)} className="rounded p-1 text-muted hover:bg-hover hover:text-ink"><Pencil className="size-3.5" /></button>}
+          </div>
+          <div className="mt-1 text-[20px] tracking-[-0.02em]"><Penetapan value={p.bkpuPenetapanPct} /></div>
+          <div className="mt-0.5 text-xs text-muted">Ditetapkan manajemen</div>
+        </div>
+        <div>
+          <div className="text-[13px] text-muted">BK/PU awal</div>
+          <div className="mt-1 text-[20px] tracking-[-0.02em]"><BkPu pct={p.bkpuAwalPct} bk={p.bkAwal} pu={p.puAwal} empty="Belum ada RAP" align="left" /></div>
+        </div>
+        <div>
+          <div className="text-[13px] text-muted">BK/PU saat ini</div>
+          <div className="mt-1 text-[20px] tracking-[-0.02em]"><BkPu pct={p.bkpuSaatIniPct} bk={p.bkSaatIni} pu={p.puSaatIni} base={p.bkpuAwalPct} empty="Belum ada progres" align="left" /></div>
+        </div>
+        <div>
+          <div className="text-[13px] text-muted">Efisiensi</div>
+          <div className="mt-1 text-[20px] tracking-[-0.02em]"><Efisiensi value={p.efisiensiPct} /></div>
+          <div className="mt-0.5 text-xs text-muted">BK/PU awal − BK/PU saat ini</div>
+        </div>
+      </section>
+      <BkpuModal open={editBkpu} onClose={() => setEditBkpu(false)} id={id} value={p.bkpuPenetapanPct} onDone={reload} />
 
       <Tabs<Tab>
         value={tab}
@@ -102,7 +139,37 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
       {tab === 'billing' && <BillingTab p={p} />}
       {tab === 'vo' && <VariationOrders projectId={id} canWrite={write} onChanged={reload} />}
       {tab === 'docs' && <Attachments entityType="Project" entityId={id} title="Dokumen proyek (kontrak, gambar, RFI, foto)" canUpload={write} />}
+      </div>
     </div>
+  );
+}
+
+function BkpuModal({ open, onClose, id, value, onDone }: { open: boolean; onClose: () => void; id: string; value: any; onDone: () => void }) {
+  const [v, setV] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (open) setV(value === null || value === undefined ? '' : String(Number(value)));
+  }, [open, value]);
+  async function save() {
+    setSaving(true);
+    try {
+      await api(`/projects/${id}`, { method: 'PATCH', body: { bkpuPenetapanPct: v.trim() } });
+      toast.success('BK/PU penetapan disimpan');
+      onDone();
+      onClose();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <Modal open={open} onClose={onClose} title="BK/PU penetapan"
+      footer={<><Button variant="secondary" onClick={onClose}>Batal</Button><Button onClick={save} loading={saving}>Simpan</Button></>}>
+      <Field label="BK/PU penetapan (%)" hint="Rasio biaya konstruksi ÷ pendapatan usaha yang ditetapkan manajemen. Kosongkan untuk menghapus.">
+        <Input type="number" step="0.01" min={0} max={999} value={v} onChange={(e) => setV(e.target.value)} autoFocus />
+      </Field>
+    </Modal>
   );
 }
 

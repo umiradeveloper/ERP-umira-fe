@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ExportButton } from '@/components/export-button';
+import { BkPu, Efisiensi, Penetapan } from '@/components/bkpu';
+import { ProjectPhoto } from '@/components/project-photo';
 import { Badge, Button, Empty, ErrorBox, Field, Input, Loading, Modal, PageHeader, Panel, Select, Table, Td, Th, Tr } from '@/components/ui';
 import { api, can, useApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -25,7 +27,7 @@ export default function ProjectsPage() {
     <div className="animate-rise">
       <PageHeader
         title="Proyek"
-        description="Nilai kontrak dan rasio BK/PU (biaya konstruksi ÷ pendapatan usaha) setiap proyek."
+        description="Nilai kontrak, BK/PU (biaya konstruksi ÷ pendapatan usaha) dan efisiensi setiap proyek."
         actions={<><ExportButton path="/exports/projects.xlsx" />{canWrite && (
           <ExcelImport
             size="md"
@@ -41,6 +43,7 @@ export default function ProjectsPage() {
               { key: 'startDate', header: 'Mulai', type: 'date' },
               { key: 'endDate', header: 'Selesai', type: 'date' },
               { key: 'managerName', header: 'Project manager', width: 22 },
+              { key: 'bkpuPenetapanPct', header: 'BK/PU penetapan (%)', type: 'number', width: 20 },
             ]}
             refSheets={() => [{ name: 'Customer', headers: ['Kode', 'Nama'], rows: (customers ?? []).map((c) => [c.code, c.name]) }]}
             resolve={(r) => {
@@ -49,7 +52,7 @@ export default function ProjectsPage() {
               return c ? { ...r, customerId: c.id } : `kode customer "${r.customerCode}" tidak ditemukan`;
             }}
             onApply={async (xs, _m, lines) => {
-              const res = await bulkCreate(xs, lines, (r) => api('/projects', { body: clean({ name: r.name, customerId: r.customerId, location: r.location, contractValue: r.contractValue, retentionPct: r.retentionPct || '5', startDate: r.startDate, endDate: r.endDate, managerName: r.managerName }) }));
+              const res = await bulkCreate(xs, lines, (r) => api('/projects', { body: clean({ name: r.name, customerId: r.customerId, location: r.location, contractValue: r.contractValue, retentionPct: r.retentionPct || '5', startDate: r.startDate, endDate: r.endDate, managerName: r.managerName, bkpuPenetapanPct: r.bkpuPenetapanPct }) }));
               reload();
               return res;
             }}
@@ -69,21 +72,30 @@ export default function ProjectsPage() {
                 <Th>Proyek</Th>
                 <Th>Owner</Th>
                 <Th right>Kontrak</Th>
+                <Th right>BK/PU penetapan</Th>
                 <Th right>BK/PU awal</Th>
                 <Th right>BK/PU saat ini</Th>
+                <Th right>Efisiensi</Th>
               </tr>
             </thead>
             <tbody>
               {rows.map((p) => (
                 <Tr key={p.id} href={`/projects/${p.id}`}>
                   <Td>
-                    <div className="font-medium">{p.name}</div>
-                    <div className="mt-0.5 flex items-center gap-2 text-xs text-muted">{p.code} <Badge status={p.status} /></div>
+                    <div className="flex items-center gap-3">
+                      <ProjectPhoto fileId={p.coverFileId} className="size-11" />
+                      <div className="min-w-0">
+                        <div className="font-medium">{p.name}</div>
+                        <div className="mt-0.5 flex items-center gap-2 text-xs text-muted">{p.code} <Badge status={p.status} /></div>
+                      </div>
+                    </div>
                   </Td>
                   <Td className="text-ink-2">{p.ownerName ?? '—'}</Td>
                   <Td right className="font-medium">{rupiahShort(p.contractValue)}</Td>
+                  <Td right><Penetapan value={p.bkpuPenetapanPct} /></Td>
                   <Td right><BkPu pct={p.bkpuAwalPct} bk={p.bkAwal} pu={p.puAwal} empty="Belum ada RAP" /></Td>
                   <Td right><BkPu pct={p.bkpuSaatIniPct} bk={p.bkSaatIni} pu={p.puSaatIni} base={p.bkpuAwalPct} empty="Belum ada progres" /></Td>
+                  <Td right><Efisiensi value={p.efisiensiPct} /></Td>
                 </Tr>
               ))}
             </tbody>
@@ -95,23 +107,10 @@ export default function ProjectsPage() {
   );
 }
 
-/** BK/PU = Biaya Konstruksi ÷ Pendapatan Usaha. Merah bila rasio saat ini melebihi rasio awal. */
-function BkPu({ pct: v, bk, pu, base, empty }: { pct: number | null; bk: any; pu: any; base?: number | null; empty: string }) {
-  if (v === null || v === undefined) return <span className="text-xs text-muted">{empty}</span>;
-  const worse = base !== undefined && base !== null && v > base + 0.005;
-  const over = v > 100;
-  return (
-    <div className="inline-block text-right" title={`BK ${rupiahShort(bk)} ÷ PU ${rupiahShort(pu)}`}>
-      <div className={`num font-semibold ${over ? 'text-bad' : worse ? 'text-warn' : ''}`}>{pct(v, 1)}</div>
-      <div className="num mt-0.5 text-xs text-muted">{rupiahShort(bk)} / {rupiahShort(pu)}</div>
-    </div>
-  );
-}
-
 function NewProject({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
   const router = useRouter();
   const { data: customers } = useApi<any[]>(open ? '/customers' : null);
-  const [f, setF] = useState({ name: '', customerId: '', location: '', managerName: '', contractValue: '', retentionPct: '5', startDate: '', endDate: '' });
+  const [f, setF] = useState({ name: '', customerId: '', location: '', managerName: '', contractValue: '', retentionPct: '5', startDate: '', endDate: '', bkpuPenetapanPct: '' });
   const [saving, setSaving] = useState(false);
   const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.value });
 
@@ -156,7 +155,8 @@ function NewProject({ open, onClose, onDone }: { open: boolean; onClose: () => v
         <Field label="Retensi (%)"><Input type="number" value={f.retentionPct} onChange={set('retentionPct')} /></Field>
         <Field label="Mulai"><Input type="date" value={f.startDate} onChange={set('startDate')} /></Field>
         <Field label="Selesai"><Input type="date" value={f.endDate} onChange={set('endDate')} /></Field>
-        <Field label="Project manager" className="sm:col-span-2"><Input value={f.managerName} onChange={set('managerName')} /></Field>
+        <Field label="Project manager"><Input value={f.managerName} onChange={set('managerName')} /></Field>
+        <Field label="BK/PU penetapan (%)" hint="Opsional, bisa diisi nanti"><Input type="number" step="0.01" value={f.bkpuPenetapanPct} onChange={set('bkpuPenetapanPct')} /></Field>
       </div>
     </Modal>
   );
