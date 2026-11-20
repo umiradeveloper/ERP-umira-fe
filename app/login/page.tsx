@@ -7,17 +7,6 @@ import { Logo } from '@/components/logo';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 
-const DEMO = [
-  ['admin@demo.co.id', 'Administrator'],
-  ['direktur@demo.co.id', 'Direktur'],
-  ['pm@demo.co.id', 'Project Manager'],
-  ['site@demo.co.id', 'Site Engineer'],
-  ['estimator@demo.co.id', 'Estimator'],
-  ['procurement@demo.co.id', 'Procurement'],
-  ['finance@demo.co.id', 'Finance & Akuntansi'],
-  ['aset@demo.co.id', 'Asset Manager'],
-];
-
 export default function LoginPage() {
   const { login, user, ready } = useAuth();
   const router = useRouter();
@@ -25,19 +14,10 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [cfg, setCfg] = useState<{ tenant: string | null; superapps: boolean } | null>(null);
-  const demo = cfg !== null && !cfg.tenant;
 
   useEffect(() => {
     api<{ tenant: string | null; superapps: boolean }>('/auth/config')
-      .then((c) => {
-        setCfg(c);
-        if (!c.tenant) {
-          // Mode demo / multi-perusahaan
-          setTenant('demo');
-          setEmail('admin@demo.co.id');
-          setPassword('Password123!');
-        }
-      })
+      .then((c) => setCfg(c))
       .catch(() => setCfg({ tenant: null, superapps: false }));
   }, []);
   const [error, setError] = useState('');
@@ -91,21 +71,6 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {demo && <div className="mt-8 border-t border-line pt-5">
-            <p className="text-[13px] text-muted">Akun demo — pilih peran untuk mencoba hak akses berbeda (password: Password123!)</p>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {DEMO.map(([e, r]) => (
-                <button
-                  key={e}
-                  type="button"
-                  onClick={() => setEmail(e)}
-                  className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${email === e ? 'border-ink bg-ink text-white' : 'border-line-strong bg-surface text-ink-2 hover:border-ink'}`}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-          </div>}
         </div>
 
         <p className="text-xs text-faint">© {new Date().getFullYear()} Umira · Construction, Development, Investment</p>
