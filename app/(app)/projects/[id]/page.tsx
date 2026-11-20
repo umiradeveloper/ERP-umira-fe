@@ -328,7 +328,7 @@ function SectionRows({ title, items }: { title: string; items: any[] }) {
         <Tr key={i.id}>
           <Td className="text-muted">{i.code}</Td>
           <Td>{i.description}</Td>
-          <Td right>{num(i.quantity)}</Td>
+          <Td right>{num(i.quantity, 6)}</Td>
           <Td className="text-muted">{i.unit}</Td>
           <Td right>{rupiah(i.unitPrice)}</Td>
           <Td right>{rupiah(i.amount)}</Td>

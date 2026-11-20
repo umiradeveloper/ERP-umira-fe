@@ -291,7 +291,7 @@ export async function parseExcelFile(file: File, columns: ExcelCol[]): Promise<P
         case 'integer': {
           const n = parseNumber(v);
           if (n === null) errs.push(`${c.header} "${text}" bukan angka`);
-          else out[c.key] = String(c.type === 'integer' ? Math.round(n) : Math.round(n * 10000) / 10000);
+          else out[c.key] = String(c.type === 'integer' ? Math.round(n) : Number(n.toFixed(6)));
           break;
         }
         case 'date': {

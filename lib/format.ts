@@ -2,9 +2,11 @@ type Num = string | number | null | undefined;
 
 export const toNum = (v: Num) => (v === null || v === undefined || v === '' ? 0 : Number(v));
 
-/** Rp 1.250.000 */
+/** Rp 1.250.000 — sen ditampilkan bila ada (Rp 1.250.000,75) supaya sama dengan Excel */
 export function rupiah(v: Num) {
-  return 'Rp ' + new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(toNum(v));
+  const n = Math.round(toNum(v) * 100) / 100;
+  const sen = !Number.isInteger(n);
+  return 'Rp ' + new Intl.NumberFormat('id-ID', { minimumFractionDigits: sen ? 2 : 0, maximumFractionDigits: sen ? 2 : 0 }).format(n);
 }
 
 /** Rp 1,25 M — ringkas untuk kartu & tabel padat */

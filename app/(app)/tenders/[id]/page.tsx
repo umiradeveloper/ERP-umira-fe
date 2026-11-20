@@ -35,7 +35,7 @@ export default function TenderDetail({ params }: { params: Promise<{ id: string 
   const calc = useMemo(() => {
     const direct = rows.reduce((a, r) => a + Math.round(toNum(r.quantity) * toNum(r.unitCost) * 100) / 100, 0);
     const byCat: Record<string, number> = {};
-    rows.forEach((r) => (byCat[r.category] = (byCat[r.category] ?? 0) + toNum(r.quantity) * toNum(r.unitCost)));
+    rows.forEach((r) => (byCat[r.category] = (byCat[r.category] ?? 0) + Math.round(toNum(r.quantity) * toNum(r.unitCost) * 100) / 100));
     const oh = (direct * toNum(markup.overheadPct)) / 100;
     const cont = (direct * toNum(markup.contingencyPct)) / 100;
     const profit = ((direct + oh + cont) * toNum(markup.profitPct)) / 100;
@@ -136,7 +136,7 @@ export default function TenderDetail({ params }: { params: Promise<{ id: string 
             </thead>
             <tbody>
               {rows.map((r, i) => {
-                const amt = toNum(r.quantity) * toNum(r.unitCost);
+                const amt = Math.round(toNum(r.quantity) * toNum(r.unitCost) * 100) / 100;
                 const newSection = i === 0 || rows[i - 1].section !== r.section;
                 return editable ? (
                   <tr key={i} className="[&>td]:border-b [&>td]:border-line [&>td]:px-1.5 [&>td]:py-1.5 [&>td:first-child]:pl-4">
@@ -157,7 +157,7 @@ export default function TenderDetail({ params }: { params: Promise<{ id: string 
                     <Td>{r.description}</Td>
                     <Td className="text-muted">{r.unit}</Td>
                     <Td className="text-muted">{CATEGORY_LABEL[r.category]}</Td>
-                    <Td right>{toNum(r.quantity).toLocaleString('id-ID')}</Td>
+                    <Td right>{toNum(r.quantity).toLocaleString('id-ID', { maximumFractionDigits: 6 })}</Td>
                     <Td right>{rupiah(r.unitCost)}</Td>
                     <Td right>{rupiah(amt)}</Td>
                   </tr>
