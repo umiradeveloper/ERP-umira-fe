@@ -6,10 +6,10 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ExportButton } from '@/components/export-button';
-import { Badge, Button, Empty, ErrorBox, Field, Input, Loading, Modal, PageHeader, Panel, PlanBar, Select, Table, Td, Th, Tr } from '@/components/ui';
+import { Badge, Button, Empty, ErrorBox, Field, Input, Loading, Modal, PageHeader, Panel, Select, Table, Td, Th, Tr } from '@/components/ui';
 import { api, can, useApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { date, pct, rupiahShort, toNum } from '@/lib/format';
+import { pct, rupiahShort, toNum } from '@/lib/format';
 
 export default function ProjectsPage() {
   const { user } = useAuth();
@@ -25,7 +25,7 @@ export default function ProjectsPage() {
     <div className="animate-rise">
       <PageHeader
         title="Proyek"
-        description="Kontrak, progres fisik dan kesehatan biaya setiap proyek."
+        description="Nilai kontrak dan rasio BK/PU (biaya konstruksi ÷ pendapatan usaha) setiap proyek."
         actions={<><ExportButton path="/exports/projects.xlsx" />{canWrite && (
           <ExcelImport
             size="md"
@@ -68,11 +68,9 @@ export default function ProjectsPage() {
               <tr>
                 <Th>Proyek</Th>
                 <Th>Owner</Th>
-                <Th>Periode</Th>
-                <Th className="w-48">Progres</Th>
                 <Th right>Kontrak</Th>
-                <Th right>Actual cost</Th>
-                <Th>Biaya</Th>
+                <Th right>BK/PU awal</Th>
+                <Th right>BK/PU saat ini</Th>
               </tr>
             </thead>
             <tbody>
@@ -83,14 +81,9 @@ export default function ProjectsPage() {
                     <div className="mt-0.5 flex items-center gap-2 text-xs text-muted">{p.code} <Badge status={p.status} /></div>
                   </Td>
                   <Td className="text-ink-2">{p.ownerName ?? '—'}</Td>
-                  <Td className="whitespace-nowrap text-xs text-muted">{date(p.startDate)} – {date(p.endDate)}</Td>
-                  <Td>
-                    <PlanBar actual={p.progressPct} planned={p.plannedPct} />
-                    <div className="num mt-1 text-xs text-muted">{pct(p.progressPct, 0)} dari rencana {pct(p.plannedPct, 0)}</div>
-                  </Td>
                   <Td right className="font-medium">{rupiahShort(p.contractValue)}</Td>
-                  <Td right>{rupiahShort(p.cost.actual)}</Td>
-                  <Td>{toNum(p.cost.budget) > 0 ? <Badge status={p.cost.alert} /> : <span className="text-xs text-muted">Belum ada budget</span>}</Td>
+                  <Td right><BkPu pct={p.bkpuAwalPct} bk={p.bkAwal} pu={p.puAwal} empty="Belum ada RAP" /></Td>
+                  <Td right><BkPu pct={p.bkpuSaatIniPct} bk={p.bkSaatIni} pu={p.puSaatIni} base={p.bkpuAwalPct} empty="Belum ada progres" /></Td>
                 </Tr>
               ))}
             </tbody>
@@ -98,6 +91,19 @@ export default function ProjectsPage() {
         )}
       </Panel>
       <NewProject open={open} onClose={() => setOpen(false)} onDone={reload} />
+    </div>
+  );
+}
+
+/** BK/PU = Biaya Konstruksi ÷ Pendapatan Usaha. Merah bila rasio saat ini melebihi rasio awal. */
+function BkPu({ pct: v, bk, pu, base, empty }: { pct: number | null; bk: any; pu: any; base?: number | null; empty: string }) {
+  if (v === null || v === undefined) return <span className="text-xs text-muted">{empty}</span>;
+  const worse = base !== undefined && base !== null && v > base + 0.005;
+  const over = v > 100;
+  return (
+    <div className="inline-block text-right" title={`BK ${rupiahShort(bk)} ÷ PU ${rupiahShort(pu)}`}>
+      <div className={`num font-semibold ${over ? 'text-bad' : worse ? 'text-warn' : ''}`}>{pct(v, 1)}</div>
+      <div className="num mt-0.5 text-xs text-muted">{rupiahShort(bk)} / {rupiahShort(pu)}</div>
     </div>
   );
 }
