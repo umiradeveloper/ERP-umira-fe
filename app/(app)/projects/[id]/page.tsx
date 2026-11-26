@@ -325,18 +325,30 @@ function SectionRows({ title, items }: { title: string; items: any[] }) {
 function ProgressTab({ p, write, reload }: { p: any; write: boolean; reload: () => void }) {
   const [mode, setMode] = useState<'' | 'progress' | 'daily'>('');
   const [f, setF] = useState<any>({});
+  const [unit, setUnit] = useState<'rp' | 'pct'>('rp');
   const [saving, setSaving] = useState(false);
+  // Basis progres Rupiah = total RAB (atau nilai kontrak bila proyek tanpa RAB)
+  const base = toNum(p.progressBase?.value);
+  const valOf = (e: any, k: 'planned' | 'actual') => (e[`${k}Value`] !== null && e[`${k}Value`] !== undefined ? toNum(e[`${k}Value`]) : (base * toNum(e[`${k}Pct`])) / 100);
+  const last = p.progress.length ? p.progress[p.progress.length - 1] : null;
+  const curActual = last ? valOf(last, 'actual') : (base * toNum(p.progressPct)) / 100;
+  const curPlanned = last ? valOf(last, 'planned') : (base * toNum(p.plannedPct)) / 100;
   const open = (m: 'progress' | 'daily') => {
     setF(m === 'progress'
-      ? { reportDate: today(), plannedPct: String(toNum(p.plannedPct)), actualPct: String(toNum(p.progressPct)), notes: '' }
+      ? { reportDate: today(), plannedPct: String(toNum(p.plannedPct)), actualPct: String(toNum(p.progressPct)), plannedValue: String(Math.round(curPlanned)), actualValue: String(Math.round(curActual)), notes: '' }
       : { reportDate: today(), weather: 'Cerah', manpower: '0', activities: '', issues: '' });
+    if (m === 'progress') setUnit(base > 0 ? 'rp' : 'pct');
     setMode(m);
   };
   async function save() {
     setSaving(true);
     try {
-      if (mode === 'progress') await api(`/projects/${p.id}/progress`, { body: f });
-      else await api(`/projects/${p.id}/daily-reports`, { body: { ...f, manpower: Number(f.manpower) } });
+      if (mode === 'progress') {
+        const body = unit === 'rp'
+          ? { reportDate: f.reportDate, plannedValue: f.plannedValue, actualValue: f.actualValue, notes: f.notes || undefined }
+          : { reportDate: f.reportDate, plannedPct: f.plannedPct, actualPct: f.actualPct, notes: f.notes || undefined };
+        await api(`/projects/${p.id}/progress`, { body });
+      } else await api(`/projects/${p.id}/daily-reports`, { body: { ...f, manpower: Number(f.manpower) } });
       toast.success(mode === 'progress' ? 'Progres tersimpan' : 'Laporan harian tersimpan');
       setMode('');
       reload();
@@ -348,21 +360,65 @@ function ProgressTab({ p, write, reload }: { p: any; write: boolean; reload: () 
   }
   const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.value });
 
+  const dev = curActual - curPlanned;
+  const sisa = base - curActual;
+  // nilai di form (Rp ⇄ %)
+  const fv = (k: 'planned' | 'actual') => (unit === 'rp' ? toNum(f[`${k}Value`]) : (base * toNum(f[`${k}Pct`])) / 100);
+  const fp = (k: 'planned' | 'actual') => (unit === 'rp' ? (base > 0 ? (toNum(f[`${k}Value`]) / base) * 100 : 0) : toNum(f[`${k}Pct`]));
+  const overRab = unit === 'rp' && (fv('actual') > base || fv('planned') > base);
+  const down = fv('actual') < curActual - 0.5;
+
   return (
-    <div className="grid gap-6 xl:grid-cols-2">
+    <div className="grid gap-6">
+      <Panel
+        title="Kontrol progres terhadap RAB"
+        subtitle={p.progressBase?.source === 'CONTRACT' ? 'Proyek tanpa RAB — basis memakai nilai kontrak.' : 'Nilai prestasi kumulatif (Rp) dibandingkan dengan total RAB.'}
+      >
+        <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-5">
+          {([
+            [p.progressBase?.source === 'CONTRACT' ? 'Nilai kontrak' : 'Total RAB', rupiah(base), '100%', ''],
+            ['Prestasi aktual', rupiah(curActual), `${pct(base ? (curActual / base) * 100 : p.progressPct, 2)} dari RAB`, 'text-ink'],
+            ['Rencana', rupiah(curPlanned), `${pct(base ? (curPlanned / base) * 100 : p.plannedPct, 2)} dari RAB`, ''],
+            ['Deviasi (aktual − rencana)', `${dev > 0 ? '+' : ''}${rupiah(dev)}`, `${dev > 0 ? '+' : ''}${pct(base ? (dev / base) * 100 : toNum(p.progressPct) - toNum(p.plannedPct), 2)} poin`, dev < 0 ? 'text-bad' : 'text-ok'],
+            ['Sisa RAB belum dikerjakan', rupiah(sisa), pct(base ? (sisa / base) * 100 : 100 - toNum(p.progressPct), 2), ''],
+          ] as const).map(([l, v, sub, cls]) => (
+            <div key={l} className="min-w-0">
+              <div className="text-[13px] text-muted">{l}</div>
+              <div className={`num mt-1 text-lg font-semibold tracking-[-0.01em] ${cls}`}>{v}</div>
+              <div className="mt-0.5 text-xs text-muted">{sub}</div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5">
+          <PlanBar actual={base ? (curActual / base) * 100 : toNum(p.progressPct)} planned={base ? (curPlanned / base) * 100 : toNum(p.plannedPct)} />
+          <div className="mt-1.5 flex justify-between text-xs text-muted"><span>Rp 0</span><span>{rupiah(base)}</span></div>
+        </div>
+      </Panel>
+
       <Panel title="Catatan progres" actions={write && (
         <div className="flex flex-wrap gap-2">
           <ExcelImport
             title="Impor progres (kurva S) dari Excel"
             templateName={`progres-${p.code}`}
-            hint="Satu baris per tanggal laporan. Persentase kumulatif 0–100."
+            hint={`Satu baris per tanggal laporan, nilai kumulatif. Isi kolom Rupiah (terhadap total RAB ${rupiah(base)}) atau kolom persen untuk rencana dan aktual.`}
             columns={[
               { key: 'reportDate', header: 'Tanggal', type: 'date', required: true },
-              { key: 'plannedPct', header: 'Rencana kumulatif (%)', type: 'number', required: true, width: 22 },
-              { key: 'actualPct', header: 'Aktual kumulatif (%)', type: 'number', required: true, width: 22 },
+              { key: 'plannedValue', header: 'Rencana kumulatif (Rp)', type: 'number', width: 24 },
+              { key: 'actualValue', header: 'Aktual kumulatif (Rp)', type: 'number', width: 24 },
+              { key: 'plannedPct', header: 'Rencana kumulatif (%)', type: 'number', width: 22 },
+              { key: 'actualPct', header: 'Aktual kumulatif (%)', type: 'number', width: 22 },
               { key: 'notes', header: 'Catatan', width: 36 },
             ]}
-            resolve={(r) => (Number(r.plannedPct) < 0 || Number(r.plannedPct) > 100 || Number(r.actualPct) < 0 || Number(r.actualPct) > 100 ? 'persentase harus 0–100' : r)}
+            resolve={(r) => {
+              for (const k of ['planned', 'actual'] as const) {
+                const v = r[`${k}Value`], c = r[`${k}Pct`];
+                const label = k === 'planned' ? 'rencana' : 'aktual';
+                if ((v === undefined || v === '') && (c === undefined || c === '')) return `isi ${label} dalam Rp atau %`;
+                if (v !== undefined && v !== '' && (Number(v) < 0 || Number(v) > base)) return `${label} Rp harus 0 – ${rupiah(base)} (total RAB)`;
+                if ((v === undefined || v === '') && (Number(c) < 0 || Number(c) > 100)) return `${label} % harus 0–100`;
+              }
+              return r;
+            }}
             onApply={async (rows, _m, lines) => {
               const order = rows.map((r, i) => ({ r, l: lines[i] })).sort((a, b) => a.r.reportDate.localeCompare(b.r.reportDate));
               const res = await bulkCreate(order.map((x) => x.r), order.map((x) => x.l), (r) => api(`/projects/${p.id}/progress`, { body: clean(r) }));
@@ -375,16 +431,22 @@ function ProgressTab({ p, write, reload }: { p: any; write: boolean; reload: () 
       )} bodyClass="p-0">
         {p.progress.length === 0 ? <Empty title="Belum ada progres" /> : (
           <Table>
-            <thead><tr><Th>Tanggal</Th><Th right>Rencana</Th><Th right>Aktual</Th><Th right>Deviasi</Th></tr></thead>
+            <thead><tr><Th>Tanggal</Th><Th right>Rencana</Th><Th right>Aktual</Th><Th right>Deviasi</Th><Th right>Sisa RAB</Th></tr></thead>
             <tbody>
               {[...p.progress].reverse().map((e: any) => {
-                const dev = toNum(e.actualPct) - toNum(e.plannedPct);
+                const pv = valOf(e, 'planned'), av = valOf(e, 'actual');
+                const d = av - pv;
+                const dp = toNum(e.actualPct) - toNum(e.plannedPct);
                 return (
                   <Tr key={e.id}>
-                    <Td>{date(e.reportDate)}</Td>
-                    <Td right>{pct(e.plannedPct)}</Td>
-                    <Td right className="font-medium">{pct(e.actualPct)}</Td>
-                    <Td right className={dev < 0 ? 'text-bad' : 'text-ok'}>{dev > 0 ? '+' : ''}{pct(dev)}</Td>
+                    <Td>
+                      {date(e.reportDate)}
+                      {e.notes && <div className="max-w-[180px] truncate text-xs text-muted" title={e.notes}>{e.notes}</div>}
+                    </Td>
+                    <Td right>{rupiah(pv)}<div className="text-xs text-muted">{pct(e.plannedPct, 2)}</div></Td>
+                    <Td right className="font-medium">{rupiah(av)}<div className="text-xs font-normal text-muted">{pct(e.actualPct, 2)}</div></Td>
+                    <Td right className={d < 0 ? 'text-bad' : 'text-ok'}>{d > 0 ? '+' : ''}{rupiah(d)}<div className="text-xs">{dp > 0 ? '+' : ''}{pct(dp, 2)}</div></Td>
+                    <Td right className="text-muted">{rupiah(Math.max(base - av, 0))}</Td>
                   </Tr>
                 );
               })}
@@ -432,13 +494,39 @@ function ProgressTab({ p, write, reload }: { p: any; write: boolean; reload: () 
       </Panel>
 
       <Modal open={!!mode} onClose={() => setMode('')} title={mode === 'progress' ? 'Catat progres' : 'Laporan harian'}
-        footer={<><Button variant="secondary" onClick={() => setMode('')}>Batal</Button><Button onClick={save} loading={saving}>Simpan</Button></>}>
+        footer={<><Button variant="secondary" onClick={() => setMode('')}>Batal</Button><Button onClick={save} loading={saving} disabled={mode === 'progress' && overRab}>Simpan</Button></>}>
         {mode === 'progress' ? (
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Tanggal"><Input type="date" value={f.reportDate} onChange={set('reportDate')} /></Field>
-            <Field label="Rencana kumulatif (%)"><Input type="number" value={f.plannedPct} onChange={set('plannedPct')} /></Field>
-            <Field label="Aktual kumulatif (%)"><Input type="number" value={f.actualPct} onChange={set('actualPct')} /></Field>
-            <Field label="Catatan" className="sm:col-span-3" hint="Progres fisik tidak otomatis menjadi progres penagihan."><Textarea value={f.notes} onChange={set('notes')} /></Field>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <Field label="Tanggal"><Input type="date" value={f.reportDate} onChange={set('reportDate')} /></Field>
+              <div>
+                <div className="mb-1.5 text-[13px] font-medium">Input dalam</div>
+                <div className="inline-flex rounded-lg border border-line-strong p-0.5">
+                  {([['rp', 'Rupiah'], ['pct', 'Persen']] as const).map(([v, l]) => (
+                    <button key={v} type="button" disabled={v === 'rp' && !base} onClick={() => setUnit(v)}
+                      className={`rounded-md px-3 py-1.5 text-xs font-medium disabled:opacity-40 ${unit === v ? 'bg-ink text-white' : 'text-muted hover:text-ink'}`}>{l}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {(['planned', 'actual'] as const).map((k) => (
+                <Field key={k} label={`${k === 'planned' ? 'Rencana' : 'Aktual'} kumulatif ${unit === 'rp' ? '(Rp)' : '(%)'}`}
+                  hint={unit === 'rp' ? `= ${pct(fp(k), 2)} dari total RAB` : base ? `= ${rupiah(fv(k))}` : undefined}>
+                  <Input type="number" step="any" min={0} value={unit === 'rp' ? f[`${k}Value`] : f[`${k}Pct`]} onChange={set(unit === 'rp' ? `${k}Value` : `${k}Pct`)} />
+                </Field>
+              ))}
+            </div>
+            <div className="rounded-lg bg-canvas px-4 py-3 text-sm">
+              <div className="flex justify-between"><span className="text-muted">Total RAB</span><span className="num">{rupiah(base)}</span></div>
+              <div className="flex justify-between"><span className="text-muted">Aktual kumulatif</span><span className="num font-medium">{rupiah(fv('actual'))} ({pct(fp('actual'), 2)})</span></div>
+              <div className="flex justify-between"><span className="text-muted">Deviasi terhadap rencana</span><span className={`num ${fv('actual') - fv('planned') < 0 ? 'text-bad' : 'text-ok'}`}>{rupiah(fv('actual') - fv('planned'))}</span></div>
+              <div className="flex justify-between"><span className="text-muted">Sisa RAB</span><span className="num">{rupiah(base - fv('actual'))}</span></div>
+              <div className="flex justify-between"><span className="text-muted">Tambahan sejak catatan terakhir</span><span className="num">{rupiah(fv('actual') - curActual)}</span></div>
+            </div>
+            {overRab && <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">Nilai melebihi total RAB {rupiah(base)}. Pekerjaan di luar RAB dicatat lewat Variation order.</p>}
+            {down && !overRab && <p className="rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">Aktual lebih kecil dari catatan terakhir ({rupiah(curActual)}). Pastikan nilai yang diisi kumulatif, bukan per periode.</p>}
+            <Field label="Catatan" hint="Progres fisik tidak otomatis menjadi progres penagihan."><Textarea value={f.notes} onChange={set('notes')} /></Field>
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-3">
