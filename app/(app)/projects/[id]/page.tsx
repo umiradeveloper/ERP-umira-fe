@@ -127,6 +127,13 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
         </div>
       )}
 
+      {p.rap?.revisionDraft && tab !== 'rap' && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-signal/30 bg-signal-soft px-4 py-3 text-sm text-signal-ink">
+          <span>Revisi {p.rap.revisionDraft} RAP sedang disusun. Cost control masih memakai RAP revisi yang berlaku sampai revisi ditetapkan.</span>
+          <Button size="sm" variant="secondary" onClick={() => setTab('rap')}>Buka RAP</Button>
+        </div>
+      )}
+
       <Tabs<Tab>
         value={tab}
         onChange={setTab}

@@ -1,13 +1,14 @@
 'use client';
 
-import { Lock, Plus, Trash2 } from 'lucide-react';
+import { History, Lock, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { api, useApi } from '@/lib/api';
+import { api, can, useApi } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { CATEGORY_OPTIONS } from '@/lib/excel';
 import { CATEGORY_LABEL, date, num, pct, rupiah, toNum } from '@/lib/format';
 import { ExcelImport } from './excel-import';
-import { Badge, Button, cn, Empty, ErrorBox, Loading, Modal, Panel, Table, Td, Th } from './ui';
+import { Badge, Button, cn, Empty, ErrorBox, Field, Loading, Modal, Panel, Table, Td, Textarea, Th } from './ui';
 
 type Row = {
   key: string;
@@ -36,6 +37,12 @@ export function RapEditor({ projectId, canEdit, onSaved }: { projectId: string; 
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [reviseOpen, setReviseOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [recompute, setRecompute] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const { user } = useAuth();
+  const isAdmin = can(user, 'admin:write');
 
   useEffect(() => {
     if (!data) return;
@@ -129,9 +136,39 @@ export function RapEditor({ projectId, canEdit, onSaved }: { projectId: string; 
   async function approve() {
     setSaving(true);
     try {
-      await api(`/projects/${projectId}/rap/approve`, { body: {} });
-      toast.success('RAP ditetapkan dan menjadi budget pelaksanaan proyek');
+      await api(`/projects/${projectId}/rap/approve`, { body: data?.isRevisionDraft ? { recomputeBkpu: recompute } : {} });
+      toast.success(data?.isRevisionDraft ? `Revisi ${data.budget.revision} RAP ditetapkan dan menjadi budget pelaksanaan` : 'RAP ditetapkan dan menjadi budget pelaksanaan proyek');
       setConfirm(false);
+      reload();
+      onSaved?.();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function revise() {
+    setSaving(true);
+    try {
+      await api(`/projects/${projectId}/rap/revise`, { body: { reason: reason.trim() } });
+      toast.success('Draf revisi RAP dibuat. RAP lama tetap berlaku sampai revisi ditetapkan.');
+      setReviseOpen(false);
+      setReason('');
+      reload();
+      onSaved?.();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function cancelRevision() {
+    setSaving(true);
+    try {
+      await api(`/projects/${projectId}/rap/revision`, { method: 'DELETE' });
+      toast.success('Revisi dibatalkan, kembali ke RAP yang berlaku');
+      setCancelOpen(false);
       reload();
       onSaved?.();
     } catch (e: any) {
@@ -191,17 +228,29 @@ export function RapEditor({ projectId, canEdit, onSaved }: { projectId: string; 
         </div>
       </section>
 
+      {data.isRevisionDraft && (
+        <div className="rounded-xl border border-[#E8CDB8] bg-signal-soft px-5 py-3.5 text-sm text-signal-ink">
+          <b>Revisi {data.budget.revision} sedang disusun.</b> Alasan: {data.revisions[0]?.revisionNote ?? '—'}. RAP yang berlaku saat ini revisi {data.current.revision} senilai{' '}
+          <b className="num">{rupiah(data.current.total)}</b>; perubahan baru berlaku setelah revisi ditetapkan
+          {toNum(data.current.total) !== totals.rap && <> (selisih <b className="num">{rupiah(totals.rap - toNum(data.current.total))}</b>)</>}.
+        </div>
+      )}
+
       <Panel
         title="RAP — Rencana Anggaran Pelaksanaan"
         subtitle={
           locked
-            ? `Ditetapkan ${date(data.budget.approvedAt)}. Perubahan setelah penetapan dilakukan lewat Variation order.`
-            : 'Isi seperti RAB: unggah Excel atau tambah baris. Baris dengan Kode yang sama dengan RAB otomatis dibandingkan dengan RAB.'
+            ? `${data.budget.revision > 1 ? `Revisi ${data.budget.revision} · ` : ''}Ditetapkan ${date(data.budget.approvedAt)}. ${isAdmin ? 'Ubah lewat tombol Revisi RAP atau Variation order.' : 'Perubahan lewat Revisi RAP (Administrator) atau Variation order.'}`
+            : data.isRevisionDraft
+              ? `Draf revisi ${data.budget.revision}. Edit seperti biasa lalu tetapkan; sampai itu cost control tetap memakai revisi ${data.current.revision}.`
+              : 'Isi seperti RAB: unggah Excel atau tambah baris. Baris dengan Kode yang sama dengan RAB otomatis dibandingkan dengan RAB.'
         }
         bodyClass="p-0"
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {locked ? <Badge label="Ditetapkan" tone="ok" /> : <Badge label="Draf" tone="warn" />}
+            {locked ? <Badge label={data.budget.revision > 1 ? `Ditetapkan · rev ${data.budget.revision}` : 'Ditetapkan'} tone="ok" /> : <Badge label={data.isRevisionDraft ? `Draf revisi ${data.budget.revision}` : 'Draf'} tone="warn" />}
+            {locked && isAdmin && <Button size="sm" variant="secondary" icon={<Pencil className="size-3.5" />} onClick={() => setReviseOpen(true)}>Revisi RAP</Button>}
+            {data.isRevisionDraft && isAdmin && <Button size="sm" variant="ghost" onClick={() => setCancelOpen(true)}>Batalkan revisi</Button>}
             {editable && (
               <>
                 <ExcelImport
@@ -241,7 +290,9 @@ export function RapEditor({ projectId, canEdit, onSaved }: { projectId: string; 
                 />
                 <Button size="sm" variant="secondary" icon={<Plus className="size-3.5" />} onClick={addRow}>Tambah baris</Button>
                 <Button size="sm" onClick={save} loading={saving} disabled={!dirty}>Simpan RAP</Button>
-                <Button size="sm" variant="secondary" icon={<Lock className="size-3.5" />} disabled={dirty || !rows.length} onClick={() => setConfirm(true)}>Tetapkan RAP</Button>
+                {(!data.isRevisionDraft || isAdmin) && (
+                  <Button size="sm" variant="secondary" icon={<Lock className="size-3.5" />} disabled={dirty || !rows.length} onClick={() => setConfirm(true)}>{data.isRevisionDraft ? 'Tetapkan revisi' : 'Tetapkan RAP'}</Button>
+                )}
               </>
             )}
           </div>
@@ -372,13 +423,73 @@ export function RapEditor({ projectId, canEdit, onSaved }: { projectId: string; 
         {dirty && <p className="border-t border-line px-5 py-2.5 text-xs text-warn">Ada perubahan RAP yang belum disimpan.</p>}
       </Panel>
 
-      <Modal open={confirm} onClose={() => setConfirm(false)} title="Tetapkan RAP?"
-        footer={<><Button variant="secondary" onClick={() => setConfirm(false)}>Batal</Button><Button onClick={approve} loading={saving}>Tetapkan RAP</Button></>}>
-        <p className="text-sm">
-          RAP senilai <b className="num">{rupiah(totals.rap)}</b> akan menjadi budget pelaksanaan proyek dan dipakai untuk cost control dan cek budget PR.
-          <b> BK/PU penetapan</b> proyek otomatis diisi <b className="num">{totals.bkpu === null ? '—' : pct(totals.bkpu, 2)}</b> (RAP ÷ RAB) sebagai BK/PU awal.
-          Setelah ditetapkan RAP dan BK/PU penetapan terkunci; perubahan berikutnya lewat Variation order.
-        </p>
+      {data.revisions?.length > 1 && (
+        <Panel title={<span className="flex items-center gap-2"><History className="size-4" /> Riwayat revisi RAP</span>} bodyClass="p-0">
+          <Table>
+            <thead><tr><Th>Revisi</Th><Th>Status</Th><Th>Alasan</Th><Th>Dibuat</Th><Th>Ditetapkan</Th><Th right>Total RAP</Th><Th right>Perubahan</Th></tr></thead>
+            <tbody>
+              {data.revisions.map((r: any, i: number) => {
+                const prev = data.revisions[i + 1];
+                const d = prev ? toNum(r.total) - toNum(prev.total) : null;
+                return (
+                  <tr key={r.id} className="border-t border-line">
+                    <Td className="whitespace-nowrap font-medium">{r.revision === 1 ? 'Awal' : `Rev ${r.revision}`}</Td>
+                    <Td>{r.approvedAt ? (data.current?.revision === r.revision ? <Badge label="Berlaku" tone="ok" /> : <Badge label="Diganti" tone="neutral" />) : <Badge label="Draf" tone="warn" />}</Td>
+                    <Td className="min-w-[220px] max-w-[360px]"><span className="line-clamp-2" title={r.revisionNote ?? undefined}>{r.revisionNote ?? (r.name?.includes('VO-') ? `Variation order (${r.name.split('— ')[1] ?? ''})` : '—')}</span></Td>
+                    <Td className="whitespace-nowrap text-muted">{date(r.createdAt)}{r.createdByName ? ` · ${r.createdByName}` : ''}</Td>
+                    <Td className="whitespace-nowrap text-muted">{r.approvedAt ? `${date(r.approvedAt)}${r.approvedByName ? ` · ${r.approvedByName}` : ''}` : '—'}</Td>
+                    <Td right>{rupiah(r.total)}</Td>
+                    <Td right className={d !== null && d > 0 ? 'text-bad' : d !== null && d < 0 ? 'text-ok' : 'text-muted'}>{d === null ? '—' : `${d > 0 ? '+' : ''}${rupiah(d)}`}</Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        </Panel>
+      )}
+
+      <Modal open={confirm} onClose={() => setConfirm(false)} title={data.isRevisionDraft ? `Tetapkan revisi ${data.budget?.revision}?` : 'Tetapkan RAP?'}
+        footer={<><Button variant="secondary" onClick={() => setConfirm(false)}>Batal</Button><Button onClick={approve} loading={saving}>{data.isRevisionDraft ? 'Tetapkan revisi' : 'Tetapkan RAP'}</Button></>}>
+        {data.isRevisionDraft ? (
+          <div className="space-y-3 text-sm">
+            <p>
+              RAP revisi {data.budget?.revision} senilai <b className="num">{rupiah(totals.rap)}</b> menggantikan revisi {data.current?.revision} (<span className="num">{rupiah(data.current?.total)}</span>)
+              sebagai budget pelaksanaan untuk cost control dan cek budget PR.
+            </p>
+            <label className="flex items-start gap-2.5 rounded-lg border border-line px-3 py-2.5">
+              <input type="checkbox" className="mt-0.5 accent-[#0A4152]" checked={recompute} onChange={(e) => setRecompute(e.target.checked)} />
+              <span>
+                <b>Hitung ulang BK/PU penetapan</b> menjadi <span className="num">{totals.bkpu === null ? '—' : pct(totals.bkpu, 2)}</span>.
+                <span className="block text-xs text-muted">Biarkan tidak dicentang agar efisiensi tetap diukur terhadap BK/PU awal.</span>
+              </span>
+            </label>
+          </div>
+        ) : (
+          <p className="text-sm">
+            RAP senilai <b className="num">{rupiah(totals.rap)}</b> akan menjadi budget pelaksanaan proyek dan dipakai untuk cost control dan cek budget PR.
+            <b> BK/PU penetapan</b> proyek otomatis diisi <b className="num">{totals.bkpu === null ? '—' : pct(totals.bkpu, 2)}</b> (RAP ÷ RAB) sebagai BK/PU awal.
+            Setelah ditetapkan RAP terkunci; perubahan berikutnya lewat Revisi RAP (Administrator) atau Variation order.
+          </p>
+        )}
+      </Modal>
+
+      <Modal open={reviseOpen} onClose={() => setReviseOpen(false)} title="Revisi RAP"
+        footer={<><Button variant="secondary" onClick={() => setReviseOpen(false)}>Batal</Button><Button onClick={revise} loading={saving} disabled={reason.trim().length < 5}>Buat draf revisi</Button></>}>
+        <div className="space-y-4 text-sm">
+          <p>
+            RAP yang berlaku disalin menjadi <b>draf revisi {(data.budget?.revision ?? 1) + 1}</b> yang bisa diedit (tambah/ubah baris atau impor Excel).
+            Sampai revisi ditetapkan, cost control tetap memakai RAP saat ini. Riwayat revisi dan alasannya tersimpan di audit log.
+          </p>
+          <Field label="Alasan revisi" hint="Wajib, minimal 5 karakter. Mis. koreksi salah input harga beton, perubahan metode kerja.">
+            <Textarea value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
+          </Field>
+          <p className="text-xs text-muted">Untuk pekerjaan tambah/kurang yang mengubah nilai kontrak, gunakan Variation order.</p>
+        </div>
+      </Modal>
+
+      <Modal open={cancelOpen} onClose={() => setCancelOpen(false)} title="Batalkan revisi RAP?"
+        footer={<><Button variant="secondary" onClick={() => setCancelOpen(false)}>Tidak</Button><Button variant="danger" onClick={cancelRevision} loading={saving}>Batalkan revisi</Button></>}>
+        <p className="text-sm">Draf revisi {data.budget?.revision} dan semua perubahannya dihapus. RAP kembali ke revisi {data.current?.revision} yang berlaku.</p>
       </Modal>
     </div>
   );
